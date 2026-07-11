@@ -1,5 +1,6 @@
+use std::collections::HashSet;
 use std::fs;
-use std::path::PathBuf;
+use std::path::Path;
 
 struct Document {
     id: usize,
@@ -11,17 +12,23 @@ type Posting = usize;
 
 type InvertedIndex = std::collections::HashMap<String, Vec<Posting>>;
 
-fn normalize_path(path: &String) -> String {
-    let filtered: String = path
+fn tokenize(s: &str) -> Vec<String> {
+    let cleaned: String = s
         .chars()
-        .map(|c| if c.is_alphanumeric() { c } else { ' ' })
+        .map(|c| {
+            if c.is_alphanumeric() {
+                c.to_ascii_lowercase()
+            } else {
+                ' '
+            }
+        })
         .collect();
-    filtered.split_whitespace().collect::<Vec<_>>().join(" ")
+    cleaned.split_whitespace().map(String::from).collect()
 }
 
-fn document_path(id: usize, path: &PathBuf) -> Document {
+fn document_path(id: usize, path: &Path) -> Document {
     Document {
-        id: id,
+        id,
         file_name: path.file_name().unwrap().to_string_lossy().into_owned(),
         file_path: path.to_string_lossy().into_owned(),
     }
@@ -35,7 +42,10 @@ fn main() {
         return;
     }
 
-    let find_token = &args[1];
+    let Some(find_token) = tokenize(&args[1]).into_iter().next() else {
+        eprintln!("Search query contains no searchable token");
+        return;
+    };
 
     let mut stack = Vec::new();
     let mut files = Vec::new();
@@ -55,14 +65,13 @@ fn main() {
     }
 
     for doc in &files {
-        let norm = normalize_path(&doc.file_path);
-        let tokens = norm.split_whitespace();
+        let tokens: HashSet<String> = tokenize(&doc.file_path).into_iter().collect();
         for token in tokens {
-            index.entry(token.to_string()).or_default().push(doc.id)
+            index.entry(token).or_default().push(doc.id)
         }
     }
 
-    if let Some(postings) = index.get(find_token) {
+    if let Some(postings) = index.get(&find_token) {
         for &posting in postings {
             println!(
                 "Document[{}]: {} | {}",
