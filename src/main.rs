@@ -34,6 +34,28 @@ fn document_path(id: usize, path: &Path) -> Document {
     }
 }
 
+fn and_search(index: &InvertedIndex, query_tokens: &[String]) -> Vec<Posting> {
+    let Some((first, rest)) = query_tokens.split_first() else {
+        eprintln!("No query tokens");
+        return Vec::new();
+    };
+
+    let Some(first_postings) = index.get(first) else {
+        return Vec::new();
+    };
+
+    let mut matches = first_postings.clone();
+
+    for token in rest {
+        let Some(postings) = index.get(token) else {
+            return Vec::new();
+        };
+        matches.retain(|posting| postings.contains(posting));
+    }
+
+    matches
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
 
@@ -42,10 +64,7 @@ fn main() {
         return;
     }
 
-    let Some(find_token) = tokenize(&args[1]).into_iter().next() else {
-        eprintln!("Search query contains no searchable token");
-        return;
-    };
+    let find_tokens = tokenize(&args[1]);
 
     let mut stack = Vec::new();
     let mut files = Vec::new();
@@ -71,12 +90,11 @@ fn main() {
         }
     }
 
-    if let Some(postings) = index.get(&find_token) {
-        for &posting in postings {
-            println!(
-                "Document[{}]: {} | {}",
-                posting, files[posting].file_name, files[posting].file_path,
-            );
-        }
+    for found in and_search(&index, &find_tokens) {
+        let Some(doc) = files.get(found) else {
+            eprintln!("Index {}, out of bounds", found);
+            break;
+        };
+        println!("Document[{}] {} | {}", found, doc.file_name, doc.file_path)
     }
 }
