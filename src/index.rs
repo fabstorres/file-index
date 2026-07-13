@@ -4,8 +4,11 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
 
+use serde::{Deserialize, Serialize};
+
 type Posting = usize;
 
+#[derive(Serialize, Deserialize)]
 pub struct InvertedIndex {
     documents: Vec<Document>,
     postings: HashMap<String, Vec<Posting>>,

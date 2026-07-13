@@ -1,5 +1,7 @@
+use serde::{Deserialize, Serialize};
 use std::path::Path;
 
+#[derive(Serialize, Deserialize)]
 pub struct Document {
     pub id: usize,
     pub file_name: String,
