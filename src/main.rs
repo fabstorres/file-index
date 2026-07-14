@@ -21,7 +21,7 @@ fn main() {
         Err(_err) => {
             let index = InvertedIndex::from_path(&std::env::current_dir().unwrap());
             let contents = serde_json::to_string(&index).unwrap();
-            let _ = fs::write("index.json", contents).unwrap();
+            fs::write("index.json", contents).unwrap();
             index
         }
     };
