@@ -30,24 +30,63 @@ fn reserve_offsets<W: Write>(
 
 pub fn try_from_inverted_index(index: &InvertedIndex) -> io::Result<Vec<u8>> {
     let mut cursor = Cursor::new(Vec::new());
+    let terms: Vec<_> = index.postings().iter().collect();
 
     reserve_header(&mut cursor)?;
     let document_table_offset = cursor.position();
     reserve_offsets(&mut cursor, index.documents().len(), 1)?;
     let terms_table_offset = cursor.position();
-    reserve_offsets(&mut cursor, index.postings().len(), 1)?;
+    reserve_offsets(&mut cursor, terms.len(), 1)?;
     let posting_table_offset = cursor.position();
-    reserve_offsets(&mut cursor, index.postings().len(), 2)?;
+    reserve_offsets(&mut cursor, terms.len(), 2)?;
 
     cursor.seek(SeekFrom::Start(8))?;
-    let document_count = u32::try_from(index.documents().len()).map_err(|error| {
-        io::Error::new(
-            io::ErrorKind::InvalidInput,
-            format!("document count exceeds u32: {error}"),
-        )
-    })?;
-    cursor.write_all(&document_count.to_le_bytes())?;
-    cursor.seek(SeekFrom::Start(document_table_offset))?;
+    cursor.write_all(&(index.documents().len() as u32).to_le_bytes())?;
+    cursor.seek(SeekFrom::Start(16))?;
+    cursor.write_all(&(terms.len() as u32).to_le_bytes())?;
+    if !terms.is_empty() {
+        cursor.write_all(&(terms_table_offset as u32).to_le_bytes())?;
+    } else {
+        cursor.seek(SeekFrom::Current(4))?;
+    }
+    cursor.write_all(&(terms.len() as u32).to_le_bytes())?;
+    if !terms.is_empty() {
+        cursor.write_all(&(posting_table_offset as u32).to_le_bytes())?;
+    }
+
+    let mut pc = document_table_offset;
+    for document in index.documents() {
+        let raw_offset = cursor.seek(SeekFrom::End(0))?;
+        cursor.seek(SeekFrom::Start(pc))?;
+        cursor.write_all(&(raw_offset as u32).to_le_bytes())?;
+        cursor.seek(SeekFrom::End(0))?;
+        cursor.write_all(document.file_path.as_bytes())?;
+        pc += size_of::<u32>() as u64;
+    }
+
+    pc = terms_table_offset;
+    for (term, _) in &terms {
+        let raw_offset = cursor.seek(SeekFrom::End(0))?;
+        cursor.seek(SeekFrom::Start(pc))?;
+        cursor.write_all(&(raw_offset as u32).to_le_bytes())?;
+        cursor.seek(SeekFrom::End(0))?;
+        cursor.write_all(term.as_bytes())?;
+        pc += size_of::<u32>() as u64;
+    }
+
+    pc = posting_table_offset;
+    for (_, postings) in terms {
+        let raw_offset = cursor.seek(SeekFrom::End(0))?;
+        cursor.seek(SeekFrom::Start(pc))?;
+        cursor.write_all(&(raw_offset as u32).to_le_bytes())?;
+        cursor.write_all(&(postings.len() as u32).to_le_bytes())?;
+        cursor.seek(SeekFrom::End(0))?;
+        for &posting in postings {
+            cursor.write_all(&(posting as u32).to_le_bytes())?;
+        }
+        pc += (2 * size_of::<u32>()) as u64;
+    }
+
     Ok(cursor.into_inner())
 }
 
@@ -102,5 +141,14 @@ mod tests {
             .collect();
 
         assert_eq!(fields, [1, 0, 32, 0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn inspect_binary_index_from_current_directory() {
+        let current_directory = std::env::current_dir().unwrap();
+        let index = InvertedIndex::from_path(&current_directory);
+        let bytes = try_from_inverted_index(&index).unwrap();
+
+        println!("{bytes:?}");
     }
 }
