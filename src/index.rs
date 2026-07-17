@@ -8,13 +8,19 @@ use serde::{Deserialize, Serialize};
 
 type Posting = usize;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Default, Serialize, Deserialize)]
 pub struct InvertedIndex {
     documents: Vec<Document>,
     postings: HashMap<String, Vec<Posting>>,
 }
 
 impl InvertedIndex {
+    pub fn documents(&self) -> &[Document] {
+        &self.documents
+    }
+    pub fn postings(&self) -> &HashMap<String, Vec<Posting>> {
+        &self.postings
+    }
     pub fn from_path(root: &Path) -> Self {
         let mut stack = vec![root.to_path_buf()];
         let mut documents = Vec::new();

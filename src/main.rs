@@ -1,4 +1,5 @@
 mod document;
+mod fif;
 mod index;
 mod tokenizer;
 
