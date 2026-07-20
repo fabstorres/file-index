@@ -89,14 +89,6 @@ impl<R: Read + Seek> FifReader<R> {
         })
     }
 
-    pub fn document_count(&self) -> u32 {
-        self.header.document_count
-    }
-
-    pub fn term_count(&self) -> u32 {
-        self.header.term_count
-    }
-
     pub fn document(&mut self, index: u32) -> io::Result<Option<String>> {
         if index >= self.header.document_count {
             return Ok(None);
@@ -171,6 +163,24 @@ impl<R: Read + Seek> FifReader<R> {
             return Ok(None);
         };
         self.postings(term_index)
+    }
+
+    pub fn and_search(&mut self, query_terms: &[String]) -> io::Result<Vec<u32>> {
+        let Some((first, rest)) = query_terms.split_first() else {
+            return Ok(Vec::new());
+        };
+        let Some(mut matches) = self.postings_for_term(first)? else {
+            return Ok(Vec::new());
+        };
+
+        for term in rest {
+            let Some(postings) = self.postings_for_term(term)? else {
+                return Ok(Vec::new());
+            };
+            matches.retain(|document_id| postings.binary_search(document_id).is_ok());
+        }
+
+        Ok(matches)
     }
 
     fn read_u32_at(&mut self, offset: u64) -> io::Result<u32> {
@@ -259,10 +269,10 @@ mod tests {
     #[test]
     fn reads_empty_encoded_index() {
         let bytes = encode::try_from_inverted_index(&InvertedIndex::default()).unwrap();
-        let reader = FifReader::new(Cursor::new(bytes)).unwrap();
+        let mut reader = FifReader::new(Cursor::new(bytes)).unwrap();
 
-        assert_eq!(reader.document_count(), 0);
-        assert_eq!(reader.term_count(), 0);
+        assert_eq!(reader.document(0).unwrap(), None);
+        assert_eq!(reader.term(0).unwrap(), None);
     }
 
     #[test]
@@ -280,7 +290,6 @@ mod tests {
         let bytes = encode::try_from_inverted_index(&index).unwrap();
         let mut reader = FifReader::new(Cursor::new(bytes)).unwrap();
 
-        assert_eq!(reader.document_count(), 2);
         let txt_index = reader.find_term("txt").unwrap().unwrap();
         assert_eq!(reader.term(txt_index).unwrap().as_deref(), Some("txt"));
         let postings = reader.postings_for_term("txt").unwrap().unwrap();
@@ -288,6 +297,13 @@ mod tests {
         for posting in postings {
             assert!(reader.document(posting).unwrap().unwrap().ends_with(".txt"));
         }
+        assert_eq!(reader.and_search(&["txt".into()]).unwrap().len(), 2);
+        assert!(
+            reader
+                .and_search(&["txt".into(), "missing".into()])
+                .unwrap()
+                .is_empty()
+        );
         assert_eq!(reader.postings_for_term("missing").unwrap(), None);
         assert_eq!(reader.document(2).unwrap(), None);
 
