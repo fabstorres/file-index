@@ -62,6 +62,7 @@ pub fn try_from_inverted_index(index: &InvertedIndex) -> io::Result<Vec<u8>> {
         cursor.write_all(&(raw_offset as u32).to_le_bytes())?;
         cursor.seek(SeekFrom::End(0))?;
         cursor.write_all(document.file_path.as_bytes())?;
+        cursor.write_all(&[0])?;
         pc += size_of::<u32>() as u64;
     }
 
@@ -72,6 +73,7 @@ pub fn try_from_inverted_index(index: &InvertedIndex) -> io::Result<Vec<u8>> {
         cursor.write_all(&(raw_offset as u32).to_le_bytes())?;
         cursor.seek(SeekFrom::End(0))?;
         cursor.write_all(term.as_bytes())?;
+        cursor.write_all(&[0])?;
         pc += size_of::<u32>() as u64;
     }
 
