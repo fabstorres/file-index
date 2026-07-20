@@ -30,7 +30,8 @@ fn reserve_offsets<W: Write>(
 
 pub fn try_from_inverted_index(index: &InvertedIndex) -> io::Result<Vec<u8>> {
     let mut cursor = Cursor::new(Vec::new());
-    let terms: Vec<_> = index.postings().iter().collect();
+    let mut terms: Vec<_> = index.postings().iter().collect();
+    terms.sort_unstable_by_key(|(term, _)| *term);
 
     reserve_header(&mut cursor)?;
     let document_table_offset = cursor.position();
